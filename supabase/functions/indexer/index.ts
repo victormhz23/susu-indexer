@@ -98,7 +98,16 @@ async function reconcileGroups(
   return divergences;
 }
 
-export async function handleRequest(request: Request): Promise<Response> {
+/** Read-only RPC and database boundaries, optionally supplied by offline tests. */
+export type RequestDependencies = {
+  db?: IndexerDb;
+  rpc?: Pick<SorobanRpcClient, 'getLatestLedger' | 'getEvents'>;
+};
+
+export async function handleRequest(
+  request: Request,
+  dependencies: RequestDependencies = {},
+): Promise<Response> {
   const correlationId = crypto.randomUUID();
   const logger = createLogger(correlationId);
 
@@ -120,8 +129,8 @@ export async function handleRequest(request: Request): Promise<Response> {
     return jsonResponse({ status: 'failed', correlationId, reason: 'unauthorized' }, 401);
   }
 
-  const db = new IndexerDb(config.supabaseUrl, config.serviceRoleKey);
-  const rpc = new SorobanRpcClient(config.rpcUrl);
+  const db = dependencies.db ?? new IndexerDb(config.supabaseUrl, config.serviceRoleKey);
+  const rpc = dependencies.rpc ?? new SorobanRpcClient(config.rpcUrl);
 
   try {
     const checkpoint = await withRetry(() => db.getCheckpoint(), RETRY);
@@ -288,4 +297,4 @@ export async function handleRequest(request: Request): Promise<Response> {
 }
 
 // Supabase Edge Functions run this module as the request handler.
-Deno.serve(handleRequest);
+Deno.serve((request) => handleRequest(request));
